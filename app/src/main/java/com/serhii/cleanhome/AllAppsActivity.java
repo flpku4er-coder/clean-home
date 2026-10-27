@@ -47,7 +47,7 @@ public class AllAppsActivity extends Activity {
         GridView grid = new GridView(this);
         grid.setNumColumns(GridView.AUTO_FIT);
         grid.setColumnWidth(Ui.dp(this, 240));
-        grid.setStretchMode(GridView.SPACING_WIDTH_UNIFORM);
+        grid.setStretchMode(GridView.STRETCH_SPACING_UNIFORM);
         grid.setVerticalSpacing(Ui.dp(this, 24));
         grid.setHorizontalSpacing(Ui.dp(this, 24));
         grid.setClipToPadding(false);
