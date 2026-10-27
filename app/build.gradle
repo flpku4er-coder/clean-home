@@ -1,0 +1,31 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.serhii.cleanhome'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.serhii.cleanhome'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.1'
+    }
+    // Постоянный ключ: иначе каждая сборка с GitHub подписывалась бы по-разному
+    // и новую версию нельзя было бы поставить поверх старой.
+    signingConfigs {
+        shared {
+            storeFile file('release.keystore')
+            storePassword 'cleanhome'
+            keyAlias 'cleanhome'
+            keyPassword 'cleanhome'
+        }
+    }
+    buildTypes {
+        debug { signingConfig signingConfigs.shared }
+        release { signingConfig signingConfigs.shared; minifyEnabled false }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
