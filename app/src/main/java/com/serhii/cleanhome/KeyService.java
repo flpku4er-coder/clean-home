@@ -31,6 +31,26 @@ public class KeyService extends AccessibilityService {
         try { c.startActivity(i); } catch (Exception ignored) { }
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
+    /**
+     * Если система или пульт открыли главный экран PatchWall (или старый
+     * лаунчер Google) — сразу возвращаем «Чистый экран». Окно выбора HDMI
+     * (InputSourcePopupActivity) из того же пакета не трогаем.
+     */
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+        CharSequence pkg = event.getPackageName(), cls = event.getClassName();
+        if (pkg == null || cls == null) return;
+        String p = pkg.toString(), c = cls.toString();
+        boolean foreignHome =
+                (p.equals("com.mitv.tvhome.atv")
+                        && (c.endsWith("PatchWallActivity") || c.endsWith("HomeIntentActivity")))
+                || p.equals("com.google.android.tvlauncher");
+        if (!foreignHome) return;
+        Intent home = new Intent(this, MainActivity.class);
+        home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        try { startActivity(home); } catch (Exception ignored) { }
+    }
     @Override public void onInterrupt() { }
 }
