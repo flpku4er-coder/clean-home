@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
     /** Кнопка входов на пульте, пока открыт наш экран. */
     @Override
     public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
-        if (keyCode == android.view.KeyEvent.KEYCODE_TV_INPUT) {
+        if (KeyService.isInputKey(keyCode)) {
             openInputs();
             return true;
         }
