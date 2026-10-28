@@ -181,9 +181,11 @@ final class Ui {
         t.setFocusable(true);
         t.setOnFocusChangeListener((v, has) -> {
             if (has) {
-                content.animate().scaleX(1.18f).scaleY(1.18f).alpha(1f).setDuration(320)
+                v.setTranslationZ(1f); // увеличенный логотип поверх соседей
+                content.animate().scaleX(1.5f).scaleY(1.5f).alpha(1f).setDuration(320)
                         .setInterpolator(new OvershootInterpolator(2.2f)).start();
             } else {
+                v.setTranslationZ(0f);
                 content.animate().scaleX(1f).scaleY(1f).alpha(0.5f).setDuration(180)
                         .setInterpolator(new DecelerateInterpolator()).start();
             }

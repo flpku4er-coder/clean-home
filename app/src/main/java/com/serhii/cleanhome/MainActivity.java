@@ -277,8 +277,8 @@ public class MainActivity extends Activity {
 
     private void addTile(View t) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP);
-        // логотипы: промежуток вдвое меньше (было ~48dp)
-        if (Ui.MONO) lp.rightMargin = -Ui.dp(this, 24);
+        // логотипы: шаг 212dp, видимый зазор ~82dp → сжимаем вдвое (−65dp вместо −24dp)
+        if (Ui.MONO) lp.rightMargin = -Ui.dp(this, 65);
         row.addView(t, lp);
     }
 
@@ -321,7 +321,9 @@ public class MainActivity extends Activity {
         seaTemp.setText("🌊 —");
         Ui.text(seaTemp, 30, Color.WHITE, true);
         top.addView(seaTemp);
-        card.addView(top);
+        // дети вертикального LinearLayout по умолчанию MATCH_PARENT по ширине —
+        // из-за этого карточка растягивалась на весь экран и наезжала на часы
+        card.addView(top, new LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP));
 
         View line = new View(this);
         line.setBackgroundColor(0x22FFFFFF);
@@ -332,7 +334,7 @@ public class MainActivity extends Activity {
         // завтра
         tomorrow = new TextView(this);
         Ui.text(tomorrow, 15, 0xCCFFFFFF, false);
-        card.addView(tomorrow);
+        card.addView(tomorrow, new LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP));
         return card;
     }
 
