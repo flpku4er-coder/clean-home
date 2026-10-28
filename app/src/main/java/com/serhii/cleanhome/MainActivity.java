@@ -45,9 +45,9 @@ public class MainActivity extends Activity {
     private static final double SEA_LON = -0.370;
     private static final long WEATHER_EVERY_MS = 30 * 60 * 1000L;
     private static final long SKY_EVERY_MS = 60 * 1000L;
-    // тестовый фон: камин, Pexels (бесплатная лицензия), 1080p, 19 с
-    private static final String BG_VIDEO =
-            "https://videos.pexels.com/video-files/3696057/3696057-hd_1920_1080_24fps.mp4";
+    // фоновое видео лежит на самом ТВ (кладётся через adb push, см. README):
+    // /sdcard/Android/data/com.serhii.cleanhome/files/bg.mp4
+    private static final String BG_FILE = "bg.mp4";
 
     private SurfaceView video;
     private View skyView;
@@ -186,9 +186,12 @@ public class MainActivity extends Activity {
     private void startVideo(SurfaceHolder holder) {
         try {
             releaseVideo();
+            java.io.File dir = getExternalFilesDir(null);
+            java.io.File f = dir == null ? null : new java.io.File(dir, BG_FILE);
+            if (f == null || !f.exists()) return; // видео нет — остаётся небо
             player = new MediaPlayer();
             player.setDisplay(holder);
-            player.setDataSource(BG_VIDEO);
+            player.setDataSource(f.getAbsolutePath());
             player.setLooping(true);
             player.setVolume(0f, 0f);
             player.setOnPreparedListener(mp -> {
@@ -257,16 +260,16 @@ public class MainActivity extends Activity {
                 refreshRow();
                 return true;
             });
-            row.addView(t);
+            addTile(t);
         }
 
         View inputs = Ui.tile(this, null, "HDMI", "Входы", false, true, onFocus);
         inputs.setOnClickListener(v -> openInputs());
-        row.addView(inputs);
+        addTile(inputs);
 
         View all = Ui.tile(this, null, "⋯", "Все приложения", false, true, onFocus);
         all.setOnClickListener(v -> startActivity(new Intent(this, AllAppsActivity.class)));
-        row.addView(all);
+        addTile(all);
 
         View settings = Ui.tile(this, null, "⚙", "Настройки", false, true, onFocus);
         settings.setOnClickListener(v -> {
@@ -274,9 +277,16 @@ public class MainActivity extends Activity {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(i);
         });
-        row.addView(settings);
+        addTile(settings);
 
         if (row.getChildCount() > 0) row.getChildAt(0).requestFocus();
+    }
+
+    private void addTile(View t) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP);
+        // логотипы: промежуток вдвое меньше (было ~48dp)
+        if (Ui.MONO) lp.rightMargin = -Ui.dp(this, 24);
+        row.addView(t, lp);
     }
 
     /** Плавно перекрашивает подсветку фона в цвет выбранной плитки. */
