@@ -20,35 +20,37 @@ APK собирается автоматически на GitHub после ка�
    `github.com/flpku4er-coder/clean-home/releases/download/latest/clean-home.apk`
 3. Разрешить Downloader установку приложений, если ТВ спросит → «Установить» → «Открыть».
 
-Пока «Чистый экран» — обычное приложение, кнопка Home ещё ведёт в Google TV.
+## Обновление (с мака, ADB)
 
-## 3. Сделать его главным экраном (1 мин)
+```bash
+cd ~/platform-tools
+./adb connect 192.168.1.137
+curl -LO https://github.com/flpku4er-coder/clean-home/releases/download/latest/clean-home.apk && ./adb install -r clean-home.apk
+```
 
-Посмотреть, какой лаунчер стоит сейчас:
-```
-adb shell cmd package resolve-activity -a android.intent.action.MAIN -c android.intent.category.HOME
+## Как настроен телевизор (Xiaomi, Android TV)
+
+Отключён старый лаунчер Google, Home открывает «Чистый экран»:
+```bash
+./adb shell pm disable-user --user 0 com.google.android.tvlauncher
 ```
 
-Для Google TV отключить штатный лаунчер и его «помощника»:
-```
-adb shell pm disable-user --user 0 com.google.android.apps.tv.launcherx
-adb shell pm disable-user --user 0 com.google.android.tungsten.setupwraith
-```
-Если первая команда показала другой пакет (например, оболочку Xiaomi) — отключить его тем же `pm disable-user`.
+PatchWall (`com.mitv.tvhome.atv`) **не отключать**: в нём живёт окно выбора HDMI.
 
-Нажать Home на пульте → выбрать «Чистый экран» → «Всегда».
+Кнопка входов на пульте шлёт `KEY_RECORD`; её перехватывает служба `KeyService` и открывает выбор HDMI:
+```bash
+./adb shell settings put secure enabled_accessibility_services com.serhii.cleanhome/com.serhii.cleanhome.KeyService
+./adb shell settings put secure accessibility_enabled 1
+```
 
 ### Вернуть всё как было
+```bash
+./adb shell pm enable com.google.android.tvlauncher
+./adb shell settings put secure enabled_accessibility_services ""
+./adb uninstall com.serhii.cleanhome
 ```
-adb shell pm enable com.google.android.apps.tv.launcherx
-adb shell pm enable com.google.android.tungsten.setupwraith
-adb uninstall com.serhii.cleanhome
-```
-
-Ничего не удаляется, только выключается. Обновления ТВ иногда включают штатный лаунчер обратно — тогда повторить шаг 3.
 
 ---
 
-## Дальше (этап 2)
-- AI-ассистент (Claude API + TMDB: «что посмотреть сегодня»)
-- Пульт и записки с телефона (веб-страница на Vercel + realtime)
+## Дальше
+- Домашний дашборд — см. `IDEAS.md`
