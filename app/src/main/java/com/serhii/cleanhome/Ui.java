@@ -121,16 +121,16 @@ final class Ui {
 
         // свечение: квадрат больше плитки, радиус = половина стороны (гаснет до нуля
         // ровно к краю — обрезки нет), сплющен по вертикали в овал
-        int s = Math.round(w * 1.6f);
+        int gs = Math.round(w * 1.6f);
         View glow = new View(c);
         GradientDrawable gd = new GradientDrawable();
         gd.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        gd.setGradientRadius(s / 2f);
+        gd.setGradientRadius(gs / 2f);
         gd.setColors(new int[]{withAlpha(color, 0xA0), withAlpha(color, 0x38), 0x00000000});
         glow.setBackground(gd);
         glow.setAlpha(0f);
         glow.setScaleY(0.7f);
-        stack.addView(glow, new FrameLayout.LayoutParams(s, s, Gravity.CENTER));
+        stack.addView(glow, new FrameLayout.LayoutParams(gs, gs, Gravity.CENTER));
 
         FrameLayout box = new FrameLayout(c);
         GradientDrawable bg = new GradientDrawable();
@@ -153,7 +153,7 @@ final class Ui {
             } else {
                 iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 int s = dp(c, 58);
-                box.addView(iv, new FrameLayout.LayoutParams(s, s, Gravity.CENTER));
+                box.addView(iv, new FrameLayout.LayoutParams(gs, gs, Gravity.CENTER));
             }
         } else {
             TextView g = new TextView(c);
