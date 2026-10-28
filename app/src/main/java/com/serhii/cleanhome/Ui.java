@@ -119,14 +119,18 @@ final class Ui {
         FrameLayout stack = new FrameLayout(c);
         stack.setClipChildren(false);
 
+        // свечение: квадрат больше плитки, радиус = половина стороны (гаснет до нуля
+        // ровно к краю — обрезки нет), сплющен по вертикали в овал
+        int s = Math.round(w * 1.6f);
         View glow = new View(c);
         GradientDrawable gd = new GradientDrawable();
         gd.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        gd.setGradientRadius(w * 0.62f);
-        gd.setColors(new int[]{withAlpha(color, 0xB0), withAlpha(color, 0x40), 0x00000000});
+        gd.setGradientRadius(s / 2f);
+        gd.setColors(new int[]{withAlpha(color, 0xA0), withAlpha(color, 0x38), 0x00000000});
         glow.setBackground(gd);
         glow.setAlpha(0f);
-        stack.addView(glow, new FrameLayout.LayoutParams(w + halo * 2, h + halo * 2));
+        glow.setScaleY(0.7f);
+        stack.addView(glow, new FrameLayout.LayoutParams(s, s, Gravity.CENTER));
 
         FrameLayout box = new FrameLayout(c);
         GradientDrawable bg = new GradientDrawable();
