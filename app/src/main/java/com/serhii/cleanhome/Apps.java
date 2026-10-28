@@ -108,7 +108,16 @@ final class Apps {
         for (String pkg : favPackages(c, all)) {
             for (AppInfo a : all) if (a.pkg.equals(pkg)) { out.add(a); break; }
         }
+        // порядок: HDRezka, YouTube, потом остальные (сортировка стабильная)
+        Collections.sort(out, (x, y) -> rank(x) - rank(y));
         return out;
+    }
+
+    private static int rank(AppInfo a) {
+        String s = (a.label + " " + a.pkg).toLowerCase(Locale.ROOT);
+        if (s.contains("rezka")) return 0;
+        if (s.contains("youtube")) return 1;
+        return 2;
     }
 
     static boolean isFav(Context c, String pkg) {
