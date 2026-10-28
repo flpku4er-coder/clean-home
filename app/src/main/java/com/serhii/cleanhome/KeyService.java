@@ -18,12 +18,12 @@ public class KeyService extends AccessibilityService {
     }
 
     /**
-     * Кнопки пульта → приложения. Кнопка Prime Video на пульте Xiaomi шлёт
-     * KEY_PLAY (Android: MEDIA_PLAY).
+     * Кнопки пульта → приложения. Коды смотреть: adb logcat -s CleanHomeKeys
+     * Пульт Xiaomi: Prime = BUTTON_7, кнопка входов = TV_INPUT, scan 416 = BUTTON_6.
      */
     static String appForKey(int code) {
         switch (code) {
-            case KeyEvent.KEYCODE_MEDIA_PLAY: return "com.falcofemoralis.hdrezkaapp"; // кнопка Prime
+            case KeyEvent.KEYCODE_BUTTON_7: return "com.falcofemoralis.hdrezkaapp"; // кнопка Prime (scan 207)
             default: return null;
         }
     }

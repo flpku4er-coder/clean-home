@@ -57,7 +57,7 @@ PatchWall (`com.mitv.tvhome.atv`) **не отключать**: в нём жив�
 ./adb shell settings put secure accessibility_enabled 1
 ```
 
-Переназначенные кнопки (`KeyService.appForKey`): кнопка **Prime Video** (`KEY_PLAY`) → HDRezka.
+Переназначенные кнопки (`KeyService.appForKey`): кнопка **Prime Video** (`KEYCODE_BUTTON_7`) → HDRezka. Коды кнопок: `./adb logcat -s CleanHomeKeys`.
 
 Телевизор сбрасывает службу при перезагрузке — приложение включает её само, если один раз выдать разрешение:
 ```bash
