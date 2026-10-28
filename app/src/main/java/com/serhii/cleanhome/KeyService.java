@@ -31,6 +31,11 @@ public class KeyService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         int code = event.getKeyCode();
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            // журнал для настройки кнопок: adb logcat -s CleanHomeKeys
+            android.util.Log.i("CleanHomeKeys", "code=" + code + " " + KeyEvent.keyCodeToString(code)
+                    + " scan=" + event.getScanCode());
+        }
         if (isInputKey(code)) {
             if (event.getAction() == KeyEvent.ACTION_UP) openInputs(this);
             return true; // глотаем и DOWN, и UP, чтобы система не делала своё
