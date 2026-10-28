@@ -30,11 +30,10 @@ curl -LO https://github.com/flpku4er-coder/clean-home/releases/download/latest/c
 
 ## Фоновое видео
 
-Файл `bg.mp4` лежит на ТВ в папке приложения. Сменить (на маке, в `~/platform-tools`):
+Ссылка на исходный mp4 — в `videos/bg.txt`. После изменения GitHub сам пережимает его в 720p/24fps
+и выкладывает в `releases/download/video/bg.mp4`. Поставить на ТВ (на маке, в `~/platform-tools`):
 ```bash
-curl -L -o src.mp4 <ссылка на mp4>
-avconvert --source src.mp4 --preset Preset1280x720 --output bg.mp4
-./adb push bg.mp4 /sdcard/Android/data/com.serhii.cleanhome/files/bg.mp4
+curl -L -o bg.mp4 https://github.com/flpku4er-coder/clean-home/releases/download/video/bg.mp4 && ./adb push bg.mp4 /sdcard/Android/data/com.serhii.cleanhome/files/bg.mp4
 ```
 Убрать видео: `./adb shell rm /sdcard/Android/data/com.serhii.cleanhome/files/bg.mp4`
 
