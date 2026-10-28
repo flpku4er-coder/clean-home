@@ -31,11 +31,17 @@
             android:stateNotNeeded="true"
             android:clearTaskOnLaunch="true"
             android:screenOrientation="landscape">
+            <!-- запуск из списка приложений (ТВ и обычный Android) -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- кандидат на «главный экран» по кнопке Home -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
 
