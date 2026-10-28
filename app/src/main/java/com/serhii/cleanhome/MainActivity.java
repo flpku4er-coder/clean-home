@@ -3,6 +3,10 @@ package com.serhii.cleanhome;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.SurfaceTexture;
+import android.media.MediaPlayer;
+import android.view.Surface;
+import android.view.TextureView;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -42,6 +46,13 @@ public class MainActivity extends Activity {
     private static final double SEA_LON = -0.370;
     private static final long WEATHER_EVERY_MS = 30 * 60 * 1000L;
     private static final long SKY_EVERY_MS = 60 * 1000L;
+    // тестовый фон: камин, Pexels (бесплатная лицензия), 1080p, 19 с
+    private static final String BG_VIDEO =
+            "https://videos.pexels.com/video-files/3696057/3696057-hd_1920_1080_24fps.mp4";
+
+    private TextureView video;
+    private MediaPlayer player;
+    private boolean playerReady;
 
     private LinearLayout row;
     private TextView weather, seaTemp;
@@ -77,6 +88,23 @@ public class MainActivity extends Activity {
                 Sky.colorsAt(System.currentTimeMillis()));
         skyView.setBackground(sky);
         root.addView(skyView, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
+
+        // зацикленное видео поверх неба (если не загрузится — остаётся небо)
+        video = new TextureView(this);
+        video.setAlpha(0f);
+        video.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override public void onSurfaceTextureAvailable(SurfaceTexture st, int w, int h) { startVideo(st); }
+            @Override public void onSurfaceTextureSizeChanged(SurfaceTexture st, int w, int h) { }
+            @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture st) { releaseVideo(); return true; }
+            @Override public void onSurfaceTextureUpdated(SurfaceTexture st) { }
+        });
+        root.addView(video, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
+
+        // затемнение, чтобы текст читался поверх видео
+        View dim = new View(this);
+        dim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x8C000000, 0x33000000, 0x99000000}));
+        root.addView(dim, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
 
         // подсветка снизу в цвет выбранного приложения
         View tintView = new View(this);
@@ -137,6 +165,7 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(skyTick);
         handler.post(weatherTick);
         handler.post(skyTick);
+        if (player != null && playerReady) player.start();
     }
 
     @Override
@@ -144,6 +173,46 @@ public class MainActivity extends Activity {
         super.onPause();
         handler.removeCallbacks(weatherTick);
         handler.removeCallbacks(skyTick);
+        if (player != null && playerReady) player.pause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        releaseVideo();
+        super.onDestroy();
+    }
+
+    // ---------- фоновое видео ----------
+
+    private void startVideo(SurfaceTexture st) {
+        try {
+            releaseVideo();
+            player = new MediaPlayer();
+            player.setSurface(new Surface(st));
+            player.setDataSource(BG_VIDEO);
+            player.setLooping(true);
+            player.setVolume(0f, 0f);
+            player.setOnPreparedListener(mp -> {
+                playerReady = true;
+                if (hasWindowFocus()) mp.start();
+                video.animate().alpha(1f).setDuration(1200).start();
+            });
+            player.setOnErrorListener((mp, what, extra) -> {
+                video.animate().alpha(0f).setDuration(300).start();
+                return true;
+            });
+            player.prepareAsync();
+        } catch (Exception e) {
+            video.setAlpha(0f);
+        }
+    }
+
+    private void releaseVideo() {
+        playerReady = false;
+        if (player != null) {
+            try { player.release(); } catch (Exception ignored) { }
+            player = null;
+        }
     }
 
     /** Кнопка входов на пульте, пока открыт наш экран. */
