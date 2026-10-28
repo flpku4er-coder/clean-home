@@ -1,0 +1,3 @@
+# Фоновое видео: ссылка на mp4. Поменял ссылку → GitHub пережмёт в 720p/24fps
+# и выложит как releases/download/video/bg.mp4
+https://videos.pexels.com/video-files/35042279/14844511_1920_1080_30fps.mp4

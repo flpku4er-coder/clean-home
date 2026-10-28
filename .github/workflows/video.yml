@@ -1,0 +1,33 @@
+name: Background video
+
+on:
+  push:
+    branches: [main]
+    paths: ['videos/**', '.github/workflows/video.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  encode:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download
+        run: |
+          url=$(grep -v '^#' videos/bg.txt | grep -m1 http)
+          curl -fL -A "Mozilla/5.0" -o src.mp4 "$url"
+      - name: Encode 720p 24fps (light for TV)
+        run: |
+          ffmpeg -y -i src.mp4 -an \
+            -vf "scale=1280:720:flags=lanczos,fps=24" \
+            -c:v libx264 -profile:v main -level 3.1 -preset slow -crf 25 \
+            -pix_fmt yuv420p -movflags +faststart bg.mp4
+          ls -la bg.mp4
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete video --yes --cleanup-tag || true
+          gh release create video bg.mp4 --title "Background video" --notes "Источник: $(grep -v '^#' videos/bg.txt | grep -m1 http)"
