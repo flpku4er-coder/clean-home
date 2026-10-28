@@ -57,8 +57,8 @@ final class Ui {
     static Drawable glass(Context c) {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(dp(c, 20));
-        g.setColor(0x1FFFFFFF);
-        g.setStroke(dp(c, 1), 0x1AFFFFFF);
+        g.setColor(0x10FFFFFF);
+        g.setStroke(dp(c, 1), 0x0DFFFFFF);
         return g;
     }
 

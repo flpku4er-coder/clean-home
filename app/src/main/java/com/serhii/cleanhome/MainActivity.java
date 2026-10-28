@@ -119,12 +119,12 @@ public class MainActivity extends Activity {
         TextClock time = new TextClock(this);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        Ui.text(time, 83, Color.WHITE, true);
+        Ui.text(time, 83, 0xB3FFFFFF, true);
 
         TextClock date = new TextClock(this);
         date.setFormat24Hour("EEEE, d MMMM");
         date.setFormat12Hour("EEEE, d MMMM");
-        Ui.text(date, 19, 0xCCFFFFFF, false);
+        Ui.text(date, 19, 0x80FFFFFF, false);
 
 
         col.addView(time);
@@ -318,7 +318,8 @@ public class MainActivity extends Activity {
         top.addView(gap, new LinearLayout.LayoutParams(Ui.dp(this, 24), 1));
 
         seaTemp = new TextView(this);
-        seaTemp.setText("🌊 —");
+        seaTemp.setText("—");
+        setIcon(seaTemp, R.drawable.wx_sea, 28);
         Ui.text(seaTemp, 30, Color.WHITE, true);
         top.addView(seaTemp);
         // дети вертикального LinearLayout по умолчанию MATCH_PARENT по ширине —
@@ -332,9 +333,18 @@ public class MainActivity extends Activity {
         card.addView(line, llp);
 
         // завтра
+        LinearLayout tr = new LinearLayout(this);
+        tr.setGravity(Gravity.CENTER_VERTICAL);
+        TextView tl = new TextView(this);
+        tl.setText("Завтра");
+        Ui.text(tl, 15, 0x99FFFFFF, false);
+        tr.addView(tl);
+        View tg = new View(this);
+        tr.addView(tg, new LinearLayout.LayoutParams(Ui.dp(this, 14), 1));
         tomorrow = new TextView(this);
         Ui.text(tomorrow, 15, 0xCCFFFFFF, false);
-        card.addView(tomorrow, new LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP));
+        tr.addView(tomorrow);
+        card.addView(tr, new LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP));
         return card;
     }
 
@@ -377,12 +387,14 @@ public class MainActivity extends Activity {
 
                 int t = (int) Math.round(cur.getDouble("temperature_2m"));
                 int code = cur.getInt("weather_code");
-                String now = icon(code) + " " + t + "°";
-                String tmr = "Завтра   " + icon(codes.getInt(1)) + "  "
-                        + Math.round(minA.getDouble(1)) + "° / " + Math.round(maxA.getDouble(1)) + "°";
+                String now = t + "°";
+                int tcode = codes.getInt(1);
+                String tmr = Math.round(minA.getDouble(1)) + "° / " + Math.round(maxA.getDouble(1)) + "°";
                 runOnUiThread(() -> {
                     weather.setText(now);
+                    setIcon(weather, iconRes(code), 28);
                     tomorrow.setText(tmr);
+                    setIcon(tomorrow, iconRes(tcode), 18);
                 });
             } catch (Exception ignored) { }
 
@@ -392,10 +404,32 @@ public class MainActivity extends Activity {
                         "https://marine-api.open-meteo.com/v1/marine?latitude=%.3f&longitude=%.3f"
                                 + "&current=sea_surface_temperature&timezone=auto", SEA_LAT, SEA_LON)));
                 double sst = m.getJSONObject("current").getDouble("sea_surface_temperature");
-                String s = "🌊 " + Math.round(sst) + "°";
+                String s = Math.round(sst) + "°";
                 runOnUiThread(() -> seaTemp.setText(s));
             } catch (Exception ignored) { }
         }).start();
+    }
+
+    /** Белая полупрозрачная иконка слева от текста. */
+    private void setIcon(TextView tv, int res, int sizeDp) {
+        android.graphics.drawable.Drawable d = getDrawable(res).mutate();
+        int px = Ui.dp(this, sizeDp);
+        d.setBounds(0, 0, px, px);
+        d.setAlpha(0xB3);
+        tv.setCompoundDrawablesRelative(d, null, null, null);
+        tv.setCompoundDrawablePadding(Ui.dp(this, sizeDp > 20 ? 10 : 6));
+    }
+
+    private static int iconRes(int c) {
+        if (c == 0) return R.drawable.wx_sun;
+        if (c <= 2) return R.drawable.wx_partly;
+        if (c == 3) return R.drawable.wx_cloud;
+        if (c == 45 || c == 48) return R.drawable.wx_fog;
+        if (c >= 51 && c <= 57) return R.drawable.wx_drizzle;
+        if ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) return R.drawable.wx_rain;
+        if ((c >= 71 && c <= 77) || c == 85 || c == 86) return R.drawable.wx_snow;
+        if (c >= 95) return R.drawable.wx_storm;
+        return R.drawable.wx_cloud;
     }
 
     private static String icon(int c) {
