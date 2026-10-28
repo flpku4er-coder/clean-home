@@ -29,8 +29,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -55,8 +53,7 @@ public class MainActivity extends Activity {
     private boolean playerReady;
 
     private LinearLayout row;
-    private TextView weather, seaTemp;
-    private LinearLayout forecast;
+    private TextView weather, seaTemp, tomorrow;
     private GradientDrawable sky, tint;
     private int tintColor = 0x00000000;
     private ValueAnimator tintAnim;
@@ -129,13 +126,9 @@ public class MainActivity extends Activity {
         date.setFormat12Hour("EEEE, d MMMM");
         Ui.text(date, 19, 0xCCFFFFFF, false);
 
-        weather = new TextView(this);
-        Ui.text(weather, 19, 0xCCFFFFFF, false);
-        weather.setPadding(0, Ui.dp(this, 6), 0, 0);
 
         col.addView(time);
         col.addView(date);
-        col.addView(weather);
         col.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1f));
 
         HorizontalScrollView scroll = new HorizontalScrollView(this);
@@ -311,18 +304,24 @@ public class MainActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(Ui.glass(this));
         int p = Ui.dp(this, 20);
-        card.setPadding(p, Ui.dp(this, 16), p, Ui.dp(this, 16));
+        card.setPadding(p, Ui.dp(this, 14), p, Ui.dp(this, 14));
 
-        TextView label = new TextView(this);
-        label.setText("МОРЕ");
-        Ui.text(label, 12, 0x99FFFFFF, true);
-        label.setLetterSpacing(0.14f);
-        card.addView(label);
+        // ряд: погода сейчас · море
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        weather = new TextView(this);
+        weather.setText("—");
+        Ui.text(weather, 30, Color.WHITE, true);
+        top.addView(weather);
+
+        View gap = new View(this);
+        top.addView(gap, new LinearLayout.LayoutParams(Ui.dp(this, 24), 1));
 
         seaTemp = new TextView(this);
-        seaTemp.setText("—");
-        Ui.text(seaTemp, 40, Color.WHITE, true);
-        card.addView(seaTemp);
+        seaTemp.setText("🌊 —");
+        Ui.text(seaTemp, 30, Color.WHITE, true);
+        top.addView(seaTemp);
+        card.addView(top);
 
         View line = new View(this);
         line.setBackgroundColor(0x22FFFFFF);
@@ -330,44 +329,18 @@ public class MainActivity extends Activity {
         llp.setMargins(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
         card.addView(line, llp);
 
-        forecast = new LinearLayout(this);
-        forecast.setOrientation(LinearLayout.VERTICAL);
-        card.addView(forecast);
+        // завтра
+        tomorrow = new TextView(this);
+        Ui.text(tomorrow, 15, 0xCCFFFFFF, false);
+        card.addView(tomorrow);
         return card;
     }
 
     private FrameLayout.LayoutParams seaWidgetParams() {
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                Ui.dp(this, 230), Ui.WRAP, Gravity.TOP | Gravity.END);
+                Ui.WRAP, Ui.WRAP, Gravity.TOP | Gravity.END);
         lp.setMargins(0, Ui.dp(this, 48), Ui.dp(this, 64), 0);
         return lp;
-    }
-
-    private void fillForecast(String[] days, int[] codes, int[] mins, int[] maxs) {
-        forecast.removeAllViews();
-        for (int i = 0; i < days.length; i++) {
-            LinearLayout r = new LinearLayout(this);
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(0, Ui.dp(this, 3), 0, Ui.dp(this, 3));
-
-            TextView d = new TextView(this);
-            d.setText(days[i]);
-            Ui.text(d, 15, 0xCCFFFFFF, false);
-            r.addView(d, new LinearLayout.LayoutParams(0, Ui.WRAP, 1f));
-
-            TextView ic = new TextView(this);
-            ic.setText(icon(codes[i]));
-            Ui.text(ic, 15, Color.WHITE, false);
-            ic.setPadding(0, 0, Ui.dp(this, 10), 0);
-            r.addView(ic);
-
-            TextView t = new TextView(this);
-            t.setText(mins[i] + "° / " + maxs[i] + "°");
-            Ui.text(t, 15, Color.WHITE, false);
-            r.addView(t);
-
-            forecast.addView(r);
-        }
     }
 
     // ---------- данные: Open-Meteo, без ключа ----------
@@ -386,13 +359,13 @@ public class MainActivity extends Activity {
 
     private void loadWeather() {
         new Thread(() -> {
-            // погода сейчас + 3 дня вперёд
+            // погода сейчас + завтра
             try {
                 JSONObject j = new JSONObject(get(String.format(Locale.US,
                         "https://api.open-meteo.com/v1/forecast?latitude=%.3f&longitude=%.3f"
                                 + "&current=temperature_2m,weather_code"
                                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
-                                + "&timezone=auto&forecast_days=4", LAT, LON)));
+                                + "&timezone=auto&forecast_days=2", LAT, LON)));
                 JSONObject cur = j.getJSONObject("current");
                 JSONObject day = j.getJSONObject("daily");
                 JSONArray dates = day.getJSONArray("time");
@@ -402,25 +375,12 @@ public class MainActivity extends Activity {
 
                 int t = (int) Math.round(cur.getDouble("temperature_2m"));
                 int code = cur.getInt("weather_code");
-                String now = icon(code) + " " + describe(code) + "  " + t + "°   ·   "
-                        + Math.round(minA.getDouble(0)) + "° / " + Math.round(maxA.getDouble(0)) + "°";
-
-                int n = Math.min(3, dates.length() - 1);
-                String[] dn = new String[n];
-                int[] dc = new int[n], dmin = new int[n], dmax = new int[n];
-                SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-                SimpleDateFormat out = new SimpleDateFormat("EEEE", Locale.getDefault());
-                for (int i = 0; i < n; i++) {
-                    Date dt = in.parse(dates.getString(i + 1));
-                    String s = out.format(dt);
-                    dn[i] = s.substring(0, 1).toUpperCase(Locale.getDefault()) + s.substring(1);
-                    dc[i] = codes.getInt(i + 1);
-                    dmin[i] = (int) Math.round(minA.getDouble(i + 1));
-                    dmax[i] = (int) Math.round(maxA.getDouble(i + 1));
-                }
+                String now = icon(code) + " " + t + "°";
+                String tmr = "Завтра   " + icon(codes.getInt(1)) + "  "
+                        + Math.round(minA.getDouble(1)) + "° / " + Math.round(maxA.getDouble(1)) + "°";
                 runOnUiThread(() -> {
                     weather.setText(now);
-                    fillForecast(dn, dc, dmin, dmax);
+                    tomorrow.setText(tmr);
                 });
             } catch (Exception ignored) { }
 
@@ -430,7 +390,7 @@ public class MainActivity extends Activity {
                         "https://marine-api.open-meteo.com/v1/marine?latitude=%.3f&longitude=%.3f"
                                 + "&current=sea_surface_temperature&timezone=auto", SEA_LAT, SEA_LON)));
                 double sst = m.getJSONObject("current").getDouble("sea_surface_temperature");
-                String s = Math.round(sst) + "°";
+                String s = "🌊 " + Math.round(sst) + "°";
                 runOnUiThread(() -> seaTemp.setText(s));
             } catch (Exception ignored) { }
         }).start();
