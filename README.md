@@ -52,6 +52,11 @@ PatchWall (`com.mitv.tvhome.atv`) **не отключать**: в нём жив�
 ./adb shell settings put secure accessibility_enabled 1
 ```
 
+Телевизор сбрасывает службу при перезагрузке — приложение включает её само, если один раз выдать разрешение:
+```bash
+./adb shell pm grant com.serhii.cleanhome android.permission.WRITE_SECURE_SETTINGS
+```
+
 ### Вернуть всё как было
 ```bash
 ./adb shell pm enable com.google.android.tvlauncher

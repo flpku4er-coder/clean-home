@@ -152,6 +152,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        ServiceGuard.ensure(this);
         refreshRow();
         handler.removeCallbacks(weatherTick);
         handler.removeCallbacks(skyTick);

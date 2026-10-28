@@ -52,5 +52,15 @@ public class KeyService extends AccessibilityService {
                 | Intent.FLAG_ACTIVITY_NO_ANIMATION);
         try { startActivity(home); } catch (Exception ignored) { }
     }
+    /** Служба поднялась сразу после загрузки ТВ — показываем наш экран поверх PatchWall. */
+    @Override
+    protected void onServiceConnected() {
+        if (android.os.SystemClock.elapsedRealtime() < 5 * 60 * 1000L) {
+            Intent home = new Intent(this, MainActivity.class);
+            home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            try { startActivity(home); } catch (Exception ignored) { }
+        }
+    }
+
     @Override public void onInterrupt() { }
 }
