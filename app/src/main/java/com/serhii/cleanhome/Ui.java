@@ -104,8 +104,96 @@ final class Ui {
      * Плитка с подписью. В фокусе: пружинит, вокруг загорается свечение
      * в цвете приложения, слушатель получает этот цвет (для фона).
      */
+    /** Главный экран: белые прозрачные логотипы вместо цветных плиток. */
+    static boolean MONO = true;
+
+    /**
+     * Белый силуэт логотипа из собственной иконки приложения: фон
+     * (цвет по краям картинки) становится прозрачным, всё, что от него
+     * заметно отличается, — белым.
+     */
+    static Bitmap monochrome(Drawable d, int w, int h) {
+        Bitmap src = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(src);
+        d.setBounds(0, 0, w, h);
+        d.draw(cv);
+
+        // фон = среднее по рамке шириной 3 px
+        long r = 0, g = 0, b = 0, a = 0, n = 0;
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            if (x > 2 && x < w - 3 && y > 2 && y < h - 3) continue;
+            int p = src.getPixel(x, y);
+            r += Color.red(p); g += Color.green(p); b += Color.blue(p); a += Color.alpha(p); n++;
+        }
+        int br = (int) (r / n), bgc = (int) (g / n), bb = (int) (b / n);
+        boolean transparentBg = a / n < 64;
+
+        int[] px = new int[w * h];
+        src.getPixels(px, 0, w, 0, 0, w, h);
+        for (int i = 0; i < px.length; i++) {
+            int p = px[i];
+            int alpha;
+            if (transparentBg) {
+                alpha = Color.alpha(p);
+            } else {
+                int dr = Color.red(p) - br, dg = Color.green(p) - bgc, db = Color.blue(p) - bb;
+                double dist = Math.sqrt(dr * dr + dg * dg + db * db);
+                double k = Math.max(0, Math.min(1, (dist - 45) / 70.0));
+                alpha = (int) (k * Color.alpha(p));
+            }
+            px[i] = (alpha << 24) | 0x00FFFFFF;
+        }
+        Bitmap out = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
+        src.recycle();
+        return out;
+    }
+
+    /** Плитка-логотип: без фона, подписи и свечения; в фокусе ярче и пружинит. */
+    static View tileMono(Context c, Drawable d, String glyph, boolean banner) {
+        int w = dp(c, TILE_W), h = dp(c, TILE_H);
+        FrameLayout t = new FrameLayout(c);
+        t.setPadding(dp(c, 10), dp(c, 10), dp(c, 10), dp(c, 10));
+        t.setClipChildren(false);
+
+        View content;
+        if (d != null) {
+            ImageView iv = new ImageView(c);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            int bw = banner ? w : dp(c, 64), bh = banner ? h : dp(c, 64);
+            try {
+                iv.setImageBitmap(monochrome(d, bw, bh));
+            } catch (Exception e) {
+                iv.setImageDrawable(d);
+            }
+            int pad = banner ? dp(c, 14) : 0;
+            iv.setPadding(pad, pad, pad, pad);
+            content = iv;
+        } else {
+            TextView g = new TextView(c);
+            g.setText(glyph);
+            text(g, glyph.length() > 2 ? 26 : 36, Color.WHITE, glyph.length() > 2);
+            g.setGravity(Gravity.CENTER);
+            content = g;
+        }
+        t.addView(content, new FrameLayout.LayoutParams(w, h, Gravity.CENTER));
+        content.setAlpha(0.5f);
+
+        t.setFocusable(true);
+        t.setOnFocusChangeListener((v, has) -> {
+            if (has) {
+                content.animate().scaleX(1.18f).scaleY(1.18f).alpha(1f).setDuration(320)
+                        .setInterpolator(new OvershootInterpolator(2.2f)).start();
+            } else {
+                content.animate().scaleX(1f).scaleY(1f).alpha(0.5f).setDuration(180)
+                        .setInterpolator(new DecelerateInterpolator()).start();
+            }
+        });
+        return t;
+    }
+
     static View tile(Context c, Drawable d, String glyph, String label,
                      boolean banner, boolean focusable, FocusListener listener) {
+        if (MONO && listener != null) return tileMono(c, d, glyph, banner);
         int w = dp(c, TILE_W), h = dp(c, TILE_H), halo = dp(c, HALO);
         int color = d != null ? dominantColor(d) : NEUTRAL;
 

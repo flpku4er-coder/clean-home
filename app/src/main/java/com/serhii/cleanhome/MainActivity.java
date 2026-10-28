@@ -3,10 +3,9 @@ package com.serhii.cleanhome;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
-import android.graphics.SurfaceTexture;
 import android.media.MediaPlayer;
-import android.view.Surface;
-import android.view.TextureView;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -50,7 +49,8 @@ public class MainActivity extends Activity {
     private static final String BG_VIDEO =
             "https://videos.pexels.com/video-files/3696057/3696057-hd_1920_1080_24fps.mp4";
 
-    private TextureView video;
+    private SurfaceView video;
+    private View skyView;
     private MediaPlayer player;
     private boolean playerReady;
 
@@ -83,22 +83,21 @@ public class MainActivity extends Activity {
         root.setClipChildren(false);
 
         // фон по времени суток
-        View skyView = new View(this);
+        // видео: SurfaceView — аппаратный слой, почти не грузит процессор
+        video = new SurfaceView(this);
+        video.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override public void surfaceCreated(SurfaceHolder h) { startVideo(h); }
+            @Override public void surfaceChanged(SurfaceHolder h, int f, int w, int hh) { }
+            @Override public void surfaceDestroyed(SurfaceHolder h) { releaseVideo(); }
+        });
+        root.addView(video, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
+
+        // небо поверх видео: видно, пока видео грузится, потом плавно уходит
+        skyView = new View(this);
         sky = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 Sky.colorsAt(System.currentTimeMillis()));
         skyView.setBackground(sky);
         root.addView(skyView, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
-
-        // зацикленное видео поверх неба (если не загрузится — остаётся небо)
-        video = new TextureView(this);
-        video.setAlpha(0f);
-        video.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @Override public void onSurfaceTextureAvailable(SurfaceTexture st, int w, int h) { startVideo(st); }
-            @Override public void onSurfaceTextureSizeChanged(SurfaceTexture st, int w, int h) { }
-            @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture st) { releaseVideo(); return true; }
-            @Override public void onSurfaceTextureUpdated(SurfaceTexture st) { }
-        });
-        root.addView(video, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
 
         // затемнение, чтобы текст читался поверх видео
         View dim = new View(this);
@@ -149,7 +148,7 @@ public class MainActivity extends Activity {
         row.setClipToPadding(false);
         scroll.addView(row);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP);
-        slp.leftMargin = -Ui.dp(this, Ui.HALO); // плитки ровно по краю текста
+        slp.leftMargin = -Ui.dp(this, Ui.MONO ? 10 : Ui.HALO); // плитки ровно по краю текста
         col.addView(scroll, slp);
 
         root.addView(col, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
@@ -184,26 +183,26 @@ public class MainActivity extends Activity {
 
     // ---------- фоновое видео ----------
 
-    private void startVideo(SurfaceTexture st) {
+    private void startVideo(SurfaceHolder holder) {
         try {
             releaseVideo();
             player = new MediaPlayer();
-            player.setSurface(new Surface(st));
+            player.setDisplay(holder);
             player.setDataSource(BG_VIDEO);
             player.setLooping(true);
             player.setVolume(0f, 0f);
             player.setOnPreparedListener(mp -> {
                 playerReady = true;
                 if (hasWindowFocus()) mp.start();
-                video.animate().alpha(1f).setDuration(1200).start();
+                skyView.animate().alpha(0f).setDuration(1200).start();
             });
             player.setOnErrorListener((mp, what, extra) -> {
-                video.animate().alpha(0f).setDuration(300).start();
+                skyView.animate().alpha(1f).setDuration(300).start();
                 return true;
             });
             player.prepareAsync();
         } catch (Exception e) {
-            video.setAlpha(0f);
+            skyView.setAlpha(1f);
         }
     }
 
@@ -246,7 +245,7 @@ public class MainActivity extends Activity {
 
     private void refreshRow() {
         row.removeAllViews();
-        Ui.FocusListener onFocus = this::animateTint;
+        Ui.FocusListener onFocus = Ui.MONO ? (c -> { }) : this::animateTint;
         List<Apps.AppInfo> favs = Apps.favorites(this);
         for (Apps.AppInfo a : favs) {
             boolean banner = a.banner != null;
