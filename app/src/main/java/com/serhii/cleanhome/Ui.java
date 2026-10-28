@@ -79,7 +79,7 @@ final class Ui {
         } else {
             TextView g = new TextView(c);
             g.setText(glyph);
-            text(g, 44, Color.WHITE, false);
+            text(g, glyph.length() > 2 ? 32 : 44, Color.WHITE, glyph.length() > 2);
             g.setGravity(Gravity.CENTER);
             box.addView(g, new FrameLayout.LayoutParams(MATCH, MATCH));
         }

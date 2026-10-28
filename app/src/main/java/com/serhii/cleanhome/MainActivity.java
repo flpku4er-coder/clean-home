@@ -106,6 +106,28 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(weatherTick);
     }
 
+    /** Кнопка входов на пульте, пока открыт наш экран. */
+    @Override
+    public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
+        if (keyCode == android.view.KeyEvent.KEYCODE_TV_INPUT) {
+            openInputs();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    /** Окно выбора HDMI из оболочки Xiaomi (PatchWall). */
+    private void openInputs() {
+        Intent i = new Intent("com.mitv.tvhome.atv.app.tv.INPUTSOURCE_POPUP");
+        i.setPackage("com.mitv.tvhome.atv");
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "Не удалось открыть выбор входа", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     @Override
     public void onBackPressed() {
         // это главный экран — «назад» никуда не ведёт
@@ -126,6 +148,10 @@ public class MainActivity extends Activity {
             });
             addTile(t);
         }
+
+        View inputs = Ui.tile(this, null, "HDMI", "Входы", false, true);
+        inputs.setOnClickListener(v -> openInputs());
+        addTile(inputs);
 
         View all = Ui.tile(this, null, "⋯", "Все приложения", false, true);
         all.setOnClickListener(v -> startActivity(new Intent(this, AllAppsActivity.class)));
