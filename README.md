@@ -44,6 +44,11 @@ curl -L -o bg.mp4 https://github.com/flpku4er-coder/clean-home/releases/download
 ./adb shell pm disable-user --user 0 com.google.android.tvlauncher
 ```
 
+Отключено для экономии памяти (ТВ с 2 ГБ): `com.miui.tv.analytics`, `com.google.android.tvrecommendations`,
+`com.google.android.videos`, `com.google.android.tungsten.setupwraith`, `com.mitv.tvhome.mitvplus`,
+`com.mitv.tvhome.michannel`, `com.xiaomi.statistic`, `com.google.android.katniss` (голосовой поиск),
+`com.xiaomi.mitv.updateservice` (обновления прошивки). Вернуть: `./adb shell pm enable <пакет>`.
+
 PatchWall (`com.mitv.tvhome.atv`) **не отключать**: в нём живёт окно выбора HDMI.
 
 Кнопка входов на пульте шлёт `KEY_RECORD`; её перехватывает служба `KeyService` и открывает выбор HDMI:
