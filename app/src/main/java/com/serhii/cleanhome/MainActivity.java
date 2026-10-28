@@ -218,6 +218,11 @@ public class MainActivity extends Activity {
             openInputs();
             return true;
         }
+        String pkg = KeyService.appForKey(keyCode);
+        if (pkg != null) {
+            Apps.launch(this, pkg);
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 

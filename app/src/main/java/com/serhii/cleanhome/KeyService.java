@@ -17,11 +17,30 @@ public class KeyService extends AccessibilityService {
         return code == KeyEvent.KEYCODE_MEDIA_RECORD || code == KeyEvent.KEYCODE_TV_INPUT;
     }
 
+    /**
+     * Кнопки пульта → приложения. Кнопка Prime Video на пульте Xiaomi шлёт
+     * KEY_PLAY (Android: MEDIA_PLAY).
+     */
+    static String appForKey(int code) {
+        switch (code) {
+            case KeyEvent.KEYCODE_MEDIA_PLAY: return "com.falcofemoralis.hdrezkaapp"; // кнопка Prime
+            default: return null;
+        }
+    }
+
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        if (!isInputKey(event.getKeyCode())) return false;
-        if (event.getAction() == KeyEvent.ACTION_UP) openInputs(this);
-        return true; // глотаем и DOWN, и UP, чтобы система не делала своё
+        int code = event.getKeyCode();
+        if (isInputKey(code)) {
+            if (event.getAction() == KeyEvent.ACTION_UP) openInputs(this);
+            return true; // глотаем и DOWN, и UP, чтобы система не делала своё
+        }
+        String pkg = appForKey(code);
+        if (pkg != null) {
+            if (event.getAction() == KeyEvent.ACTION_UP) Apps.launch(this, pkg);
+            return true;
+        }
+        return false;
     }
 
     static void openInputs(android.content.Context c) {
