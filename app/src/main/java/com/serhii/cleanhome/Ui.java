@@ -153,7 +153,7 @@ final class Ui {
             } else {
                 iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 int s = dp(c, 58);
-                box.addView(iv, new FrameLayout.LayoutParams(gs, gs, Gravity.CENTER));
+                box.addView(iv, new FrameLayout.LayoutParams(s, s, Gravity.CENTER));
             }
         } else {
             TextView g = new TextView(c);
