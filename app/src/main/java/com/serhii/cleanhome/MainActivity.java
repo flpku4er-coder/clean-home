@@ -144,8 +144,17 @@ public class MainActivity extends Activity {
         Ui.text(date, 19, 0x80FFFFFF, false);
 
 
+        time.setIncludeFontPadding(false);
         col.addView(time);
         col.addView(date);
+        // верх цифр — ровно по верхнему краю карточки погоды (у обоих отступ 48dp сверху):
+        // поднимаем часы и дату на расстояние от верха строки до верха цифр
+        time.post(() -> {
+            android.graphics.Rect r = new android.graphics.Rect();
+            time.getPaint().getTextBounds("0123456789", 0, 10, r);
+            float lift = time.getBaseline() + r.top;   // r.top < 0 — высота цифр над базовой линией
+            if (lift > 0) { time.setTranslationY(-lift); date.setTranslationY(-lift); }
+        });
         col.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1f));
 
         HorizontalScrollView scroll = new HorizontalScrollView(this);
@@ -353,12 +362,16 @@ public class MainActivity extends Activity {
             boolean banner = a.banner != null;
             View t = Ui.tile(this, banner ? a.banner : a.icon, null, a.label, banner, true, onFocus);
             t.setOnClickListener(v -> Apps.launch(this, a.pkg));
-            t.setOnLongClickListener(v -> {
+            // удержать OK (или ☰) — убрать с главного
+            Runnable remove = () -> {
                 Apps.toggleFav(this, a.pkg);
                 Toast.makeText(this, "Убрано с главного: " + a.label, Toast.LENGTH_SHORT).show();
                 refreshRow();
-                return true;
-            });
+            };
+            boolean[] fired = {false};
+            t.setOnKeyListener((v, code, e) -> Ui.holdKey(e, fired, remove));
+            // системный long-click тоже оставляем; флаг не даёт сработать дважды на отпускании
+            t.setOnLongClickListener(v -> { fired[0] = true; remove.run(); return true; });
             addTile(t);
         }
 

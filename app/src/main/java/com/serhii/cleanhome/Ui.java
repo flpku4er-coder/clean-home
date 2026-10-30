@@ -35,6 +35,38 @@ final class Ui {
 
     interface FocusListener { void onFocus(int color); }
 
+    /** Сколько держать OK, чтобы считалось «долгим нажатием». */
+    static final long HOLD_MS = 500;
+
+    /**
+     * Долгое нажатие OK по времени удержания, а не по повторам кнопки:
+     * пульт Xiaomi (Bluetooth) часто не шлёт повторы, и стандартный long-click
+     * не срабатывает. Кнопка меню (☰) делает то же самое.
+     * Возвращает true, если событие съедено.
+     */
+    static boolean holdKey(android.view.KeyEvent e, boolean[] fired, Runnable onHold) {
+        int code = e.getKeyCode();
+        if (code == android.view.KeyEvent.KEYCODE_MENU) {
+            if (e.getAction() == android.view.KeyEvent.ACTION_UP) onHold.run();
+            return true;
+        }
+        boolean ok = code == android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                || code == android.view.KeyEvent.KEYCODE_ENTER
+                || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (!ok) return false;
+        long held = e.getEventTime() - e.getDownTime();
+        if (e.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+            if (e.getRepeatCount() == 0) { fired[0] = false; return false; }
+            if (!fired[0] && held >= HOLD_MS) { fired[0] = true; onHold.run(); }
+            return true;                     // повторы не превращаем в клики
+        }
+        if (e.getAction() == android.view.KeyEvent.ACTION_UP) {
+            if (fired[0]) { fired[0] = false; return true; }        // уже сработало на повторе
+            if (held >= HOLD_MS) { onHold.run(); return true; }    // повторов не было — по времени
+        }
+        return false;                         // короткое нажатие — обычный клик
+    }
+
     static int dp(Context c, float v) {
         return Math.round(TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics()));

@@ -38,7 +38,7 @@ public class AllAppsActivity extends Activity {
         title.setText("Все приложения");
         Ui.text(title, 32, Color.WHITE, true);
         TextView hint = new TextView(this);
-        hint.setText("Долгое нажатие OK — добавить на главный экран или убрать (★)");
+        hint.setText("Удержи OK или нажми ☰ — добавить на главный или убрать (★)");
         Ui.text(hint, 16, 0x99FFFFFF, false);
         hint.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 24));
         col.addView(title);
@@ -73,17 +73,26 @@ public class AllAppsActivity extends Activity {
         };
         grid.setAdapter(adapter);
         grid.setOnItemClickListener((p, v, i, id) -> Apps.launch(this, apps.get(i).pkg));
-        grid.setOnItemLongClickListener((p, v, i, id) -> {
-            Apps.AppInfo a = apps.get(i);
-            boolean added = Apps.toggleFav(this, a.pkg);
-            Toast.makeText(this, (added ? "На главном: " : "Убрано: ") + a.label,
-                    Toast.LENGTH_SHORT).show();
-            adapter.notifyDataSetChanged();
-            return true;
+        // удержать OK (или ☰) на приложении — добавить на главный / убрать.
+        // Системный long-click тоже оставляем; флаг не даёт сработать дважды на отпускании.
+        boolean[] fired = {false};
+        grid.setOnItemLongClickListener((p, v, i, id) -> { fired[0] = true; toggle(i); return true; });
+        grid.setOnKeyListener((v, code, e) -> {
+            int i = grid.getSelectedItemPosition();
+            if (i < 0) return false;
+            return Ui.holdKey(e, fired, () -> toggle(i));
         });
 
         col.addView(grid, new LinearLayout.LayoutParams(Ui.MATCH, 0, 1f));
         setContentView(col);
         grid.requestFocus();
+    }
+
+    private void toggle(int i) {
+        Apps.AppInfo a = apps.get(i);
+        boolean added = Apps.toggleFav(this, a.pkg);
+        Toast.makeText(this, (added ? "Добавлено на главный: " : "Убрано с главного: ") + a.label,
+                Toast.LENGTH_SHORT).show();
+        adapter.notifyDataSetChanged();
     }
 }
