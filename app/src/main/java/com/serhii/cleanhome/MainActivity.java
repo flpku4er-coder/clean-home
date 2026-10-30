@@ -186,6 +186,15 @@ public class MainActivity extends Activity {
         registerReceiver(screenReceiver, f);
     }
 
+    /** Для проверки с компьютера: adb shell am start -n com.serhii.cleanhome/.MainActivity --ez unfold true */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && intent.getBooleanExtra("unfold", false)) {
+            handler.postDelayed(() -> { unfold.prepare(); unfold.play(); }, 300);
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
