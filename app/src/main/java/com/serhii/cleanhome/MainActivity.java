@@ -61,13 +61,13 @@ public class MainActivity extends Activity {
     // заставка «раскрытие» (как у iPhone Duo) при включении ТВ
     private Unfold unfold;
     private boolean resumed;
-    private long screenOnAt, pausedAt;
+    private long videoPosUs = -1;   // где было видео, когда уходили с главного
     private final android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
         @Override public void onReceive(android.content.Context c, Intent i) {
             if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
-                if (resumed || System.currentTimeMillis() - pausedAt < 2000) unfold.prepare(); // кадр снимаем заранее, чтобы при включении не мигнуло
+                // кадр снимаем заранее, чтобы при включении не мигнуло (если onStop ещё не снял)
+                if (resumed && !unfold.isActive()) unfold.prepare();
             } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
-                screenOnAt = System.currentTimeMillis();
                 if (resumed && unfold.isActive()) handler.postDelayed(unfold::play, 60);
             }
         }
@@ -162,7 +162,15 @@ public class MainActivity extends Activity {
         root.addView(col, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         root.addView(buildSeaWidget(), seaWidgetParams());
 
-        unfold = new Unfold(this, root, skyView, this::videoFrame);
+        unfold = new Unfold(this, root, skyView, new Unfold.FrameSource() {
+            @Override public long position() {
+                if (player != null && playerReady) {
+                    try { return player.getCurrentPosition() * 1000L; } catch (Exception e) { return -1; }
+                }
+                return videoPosUs;
+            }
+            @Override public android.graphics.Bitmap frame(long us, int w, int h) { return videoFrame(us, w, h); }
+        });
         root.addView(unfold, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         setContentView(root);
 
@@ -206,18 +214,26 @@ public class MainActivity extends Activity {
         handler.post(weatherTick);
         handler.post(skyTick);
         if (player != null && playerReady) player.start();
-        // экран включился раньше, чем мы ожили — доигрываем; если давно — просто убираем заставку
-        if (unfold.isActive() && screenOnAt > 0) {
-            if (System.currentTimeMillis() - screenOnAt < 2500) handler.postDelayed(unfold::play, 60);
-            else unfold.hide();
-        }
+        // вернулись на главный (из приложения или после включения ТВ) — раскрываемся.
+        // Кадр снят в onStop, поэтому экран уже закрыт заставкой и ничего не мигает.
+        // При холодном старте экран ещё не размечен — там запускает onCreate.
+        if (unfold.isActive() && unfold.getWidth() > 0) handler.postDelayed(unfold::play, 60);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // ушли с главного: снимаем кадр заранее (в onStop, а не onPause —
+        // иначе полупрозрачные окна поверх, например выбор HDMI, легли бы на чёрный фон)
+        unfold.prepare();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         resumed = false;
-        pausedAt = System.currentTimeMillis();
+        try { videoPosUs = (player != null && playerReady) ? player.getCurrentPosition() * 1000L : -1; }
+        catch (Exception e) { videoPosUs = -1; }
         handler.removeCallbacks(weatherTick);
         handler.removeCallbacks(skyTick);
         if (player != null && playerReady) player.pause();
@@ -245,6 +261,8 @@ public class MainActivity extends Activity {
             player.setVolume(0f, 0f);
             player.setOnPreparedListener(mp -> {
                 playerReady = true;
+                // продолжаем видео с того же места — совпадёт с кадром в заставке
+                if (videoPosUs > 0) try { mp.seekTo((int) (videoPosUs / 1000)); } catch (Exception ignored) { }
                 if (hasWindowFocus()) mp.start();
                 skyView.animate().alpha(0f).setDuration(1200).start();
             });
@@ -259,14 +277,12 @@ public class MainActivity extends Activity {
     }
 
     /** Текущий кадр фонового видео — для заставки «раскрытие». */
-    private android.graphics.Bitmap videoFrame(int w, int h) {
-        if (player == null || !playerReady) return null;
+    private android.graphics.Bitmap videoFrame(long us, int w, int h) {
         java.io.File dir = getExternalFilesDir(null);
         if (dir == null) return null;
         android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
         try {
             r.setDataSource(new java.io.File(dir, BG_FILE).getAbsolutePath());
-            long us = player.getCurrentPosition() * 1000L;
             int opt = android.media.MediaMetadataRetriever.OPTION_CLOSEST;
             return android.os.Build.VERSION.SDK_INT >= 27
                     ? r.getScaledFrameAtTime(us, opt, w, h)

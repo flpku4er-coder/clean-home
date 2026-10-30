@@ -32,7 +32,12 @@ import android.view.animation.PathInterpolator;
 public class Unfold extends View {
 
     /** Откуда взять текущий кадр фонового видео (SurfaceView в снимок не попадает). */
-    public interface FrameSource { Bitmap frame(int w, int h); }
+    public interface FrameSource {
+        /** Позиция видео в мкс или -1, если видео нет. Вызывается на главном потоке. */
+        long position();
+        /** Кадр видео в этой позиции. Вызывается в фоне. */
+        Bitmap frame(long us, int w, int h);
+    }
 
     // ---- параметры из Unfold Lab (пиксели — в пересчёте на ширину 1920) ----
     private static final long OPEN_MS = 950;
@@ -70,7 +75,8 @@ public class Unfold extends View {
     private final Path path = new Path();
 
     private float p;          // 0 — сложен, 1 — раскрыт (уже с кривой)
-    private boolean ready;
+    private boolean ready, preparing, playWhenReady;
+    private int gen;   // номер подготовки: устаревшие фоновые результаты выбрасываем
     private ValueAnimator anim;
 
     public Unfold(Context c, ViewGroup root, View sky, FrameSource video) {
@@ -98,47 +104,77 @@ public class Unfold extends View {
         invalidate();
     }
 
-    /** Снять кадр главного экрана и встать в «сложенное» положение. */
+    /**
+     * Снять кадр главного экрана и встать в «сложенное» положение (экран закрыт чёрным).
+     * Интерфейс снимается сразу (быстро), кадр видео и размытие — в фоне,
+     * чтобы не тормозить запуск приложения, с которого мы уходим.
+     */
     public void prepare() {
         int w = root.getWidth(), h = root.getHeight();
         if (w == 0 || h == 0) return;
         cancel();
         recycle();
+        final int g = ++gen;
+        playWhenReady = false;
         try {
             setVisibility(GONE);
-            int sw = w / SNAP_DIV, sh = h / SNAP_DIV;
-            Bitmap frame = video == null ? null : video.frame(sw, sh);
+            final int sw = w / SNAP_DIV, sh = h / SNAP_DIV;
+            final long pos = video == null ? -1 : video.position();
 
-            sharp = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
-            Canvas c = new Canvas(sharp);
-            c.save();
+            final Bitmap ui = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(ui);
             c.scale(1f / SNAP_DIV, 1f / SNAP_DIV);
             float skyAlpha = sky.getAlpha();
-            if (frame == null) sky.setAlpha(1f); // видео нет — в кадре небо
+            if (pos < 0) sky.setAlpha(1f); // видео нет — в кадре небо
             root.draw(c);
             sky.setAlpha(skyAlpha);
-            c.restore();
-            if (frame != null) {
-                // интерфейс уже нарисован; кадр видео подкладываем ПОД него
-                Paint under = new Paint(Paint.FILTER_BITMAP_FLAG);
-                under.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OVER));
-                c.drawBitmap(frame, null, new Rect(0, 0, sw, sh), under);
-                frame.recycle();
-            }
 
-            mid = blurred(sharp, w, h, MID_BLUR);
-            heavy = blurred(sharp, w, h, HEAVY_BLUR);
-
-            sharpPaint.setShader(shader(sharp, w, h));
-            midBase = shader(mid, w, h);
-            heavyBase = shader(heavy, w, h);
-
-            p = 0f;
-            ready = true;
+            preparing = true;
             setAlpha(1f);
-            setVisibility(VISIBLE);
+            setVisibility(VISIBLE);   // пока считается — чёрный экран
             invalidate();
+
+            new Thread(() -> {
+                Bitmap m = null, hv = null;
+                try {
+                    if (pos >= 0) {
+                        Bitmap frame = video.frame(pos, sw, sh);
+                        if (frame != null) {
+                            // интерфейс уже нарисован; кадр видео подкладываем ПОД него
+                            Canvas cc = new Canvas(ui);
+                            Paint under = new Paint(Paint.FILTER_BITMAP_FLAG);
+                            under.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OVER));
+                            cc.drawBitmap(frame, null, new Rect(0, 0, sw, sh), under);
+                            frame.recycle();
+                        }
+                    }
+                    m = blurred(ui, w, h, MID_BLUR);
+                    hv = blurred(ui, w, h, HEAVY_BLUR);
+                } catch (Throwable t) {
+                    m = hv = null;
+                }
+                final Bitmap fm = m, fh = hv;
+                post(() -> {
+                    if (g != gen || fm == null || fh == null) {   // устарело или не вышло
+                        if (fm != null) fm.recycle();
+                        if (fh != null) fh.recycle();
+                        if (g == gen) { ui.recycle(); preparing = false; setVisibility(GONE); }
+                        else ui.recycle();
+                        return;
+                    }
+                    sharp = ui; mid = fm; heavy = fh;
+                    sharpPaint.setShader(shader(sharp, w, h));
+                    midBase = shader(mid, w, h);
+                    heavyBase = shader(heavy, w, h);
+                    p = 0f;
+                    preparing = false;
+                    ready = true;
+                    invalidate();
+                    if (playWhenReady) play();
+                });
+            }, "unfold-prepare").start();
         } catch (Throwable t) { // нехватка памяти и т.п. — просто без заставки
+            preparing = false;
             recycle();
             setVisibility(GONE);
         }
@@ -164,8 +200,14 @@ public class Unfold extends View {
 
     /** Проиграть раскрытие. Если кадра нет — снимет сам. */
     public void play() {
-        if (!ready) prepare();
-        if (!ready) { setVisibility(GONE); return; }
+        if (!ready) {
+            if (!preparing) prepare();
+            if (preparing) playWhenReady = true;   // доиграем, когда фон досчитает
+            else setVisibility(GONE);
+            return;
+        }
+        playWhenReady = false;
+        if (anim != null && anim.isRunning()) return;   // уже играет (экран включился + onResume)
         cancel();
         PathInterpolator ease = new PathInterpolator(EASE_X1, EASE_Y1, EASE_X2, EASE_Y2);
         anim = ValueAnimator.ofFloat(0f, 1f);
@@ -190,6 +232,8 @@ public class Unfold extends View {
     /** Убрать заставку без анимации. */
     public void hide() {
         cancel();
+        gen++;
+        preparing = playWhenReady = false;
         setVisibility(GONE);
         recycle();
     }
