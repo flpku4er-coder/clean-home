@@ -7,8 +7,8 @@ android {
         applicationId 'com.serhii.cleanhome'
         minSdk 26
         targetSdk 34
-        versionCode 16
-        versionName '1.1.2'
+        versionCode 17
+        versionName '1.2.0'
     }
     // Постоянный ключ: иначе каждая сборка с GitHub подписывалась бы по-разному
     // и новую версию нельзя было бы поставить поверх старой.

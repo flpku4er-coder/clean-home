@@ -58,6 +58,21 @@ public class MainActivity extends Activity {
     private int tintColor = 0x00000000;
     private ValueAnimator tintAnim;
 
+    // заставка «раскрытие» (как у iPhone Duo) при включении ТВ
+    private Unfold unfold;
+    private boolean resumed;
+    private long screenOnAt, pausedAt;
+    private final android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context c, Intent i) {
+            if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
+                if (resumed || System.currentTimeMillis() - pausedAt < 2000) unfold.prepare(); // кадр снимаем заранее, чтобы при включении не мигнуло
+            } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) {
+                screenOnAt = System.currentTimeMillis();
+                if (resumed && unfold.isActive()) handler.postDelayed(unfold::play, 60);
+            }
+        }
+    };
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable weatherTick = new Runnable() {
         @Override public void run() {
@@ -146,12 +161,35 @@ public class MainActivity extends Activity {
 
         root.addView(col, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         root.addView(buildSeaWidget(), seaWidgetParams());
+
+        unfold = new Unfold(this, root, skyView);
+        root.addView(unfold, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         setContentView(root);
+
+        // холодный старт после загрузки ТВ (а не перезапуск лаунчера системой):
+        // раскрываемся, когда экран собран
+        if (savedInstanceState == null && android.os.SystemClock.elapsedRealtime() < 3 * 60 * 1000L) {
+            unfold.cover();
+            root.getViewTreeObserver().addOnGlobalLayoutListener(
+                    new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                        @Override public void onGlobalLayout() {
+                            if (root.getWidth() == 0 || row.getChildCount() == 0) return;
+                            root.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                            handler.postDelayed(unfold::play, 250); // даём иконкам прогрузиться
+                        }
+                    });
+        }
+
+        android.content.IntentFilter f = new android.content.IntentFilter();
+        f.addAction(Intent.ACTION_SCREEN_OFF);
+        f.addAction(Intent.ACTION_SCREEN_ON);
+        registerReceiver(screenReceiver, f);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         ServiceGuard.ensure(this);
         refreshRow();
         handler.removeCallbacks(weatherTick);
@@ -159,11 +197,18 @@ public class MainActivity extends Activity {
         handler.post(weatherTick);
         handler.post(skyTick);
         if (player != null && playerReady) player.start();
+        // экран включился раньше, чем мы ожили — доигрываем; если давно — просто убираем заставку
+        if (unfold.isActive() && screenOnAt > 0) {
+            if (System.currentTimeMillis() - screenOnAt < 2500) handler.postDelayed(unfold::play, 60);
+            else unfold.hide();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
+        pausedAt = System.currentTimeMillis();
         handler.removeCallbacks(weatherTick);
         handler.removeCallbacks(skyTick);
         if (player != null && playerReady) player.pause();
@@ -171,6 +216,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        try { unregisterReceiver(screenReceiver); } catch (Exception ignored) { }
         releaseVideo();
         super.onDestroy();
     }
