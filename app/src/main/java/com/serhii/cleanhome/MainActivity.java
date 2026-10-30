@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
         root.addView(col, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         root.addView(buildSeaWidget(), seaWidgetParams());
 
-        unfold = new Unfold(this, root, skyView);
+        unfold = new Unfold(this, root, skyView, this::videoFrame);
         root.addView(unfold, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         setContentView(root);
 
@@ -255,6 +255,26 @@ public class MainActivity extends Activity {
             player.prepareAsync();
         } catch (Exception e) {
             skyView.setAlpha(1f);
+        }
+    }
+
+    /** Текущий кадр фонового видео — для заставки «раскрытие». */
+    private android.graphics.Bitmap videoFrame(int w, int h) {
+        if (player == null || !playerReady) return null;
+        java.io.File dir = getExternalFilesDir(null);
+        if (dir == null) return null;
+        android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+        try {
+            r.setDataSource(new java.io.File(dir, BG_FILE).getAbsolutePath());
+            long us = player.getCurrentPosition() * 1000L;
+            int opt = android.media.MediaMetadataRetriever.OPTION_CLOSEST;
+            return android.os.Build.VERSION.SDK_INT >= 27
+                    ? r.getScaledFrameAtTime(us, opt, w, h)
+                    : r.getFrameAtTime(us, opt);
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            try { r.release(); } catch (Exception ignored) { }
         }
     }
 

@@ -10,52 +10,66 @@ import android.graphics.ComposeShader;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
 import android.graphics.Shader;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
 
 /**
- * Заставка «раскрытие» в духе iPhone Duo: экран раскрывается от центральной линии,
- * как книга. Края половинок размыты и притемнены, у «шарнира» картинка резкая.
- * По мере раскрытия размытие и тень уходят, и остаётся живой главный экран.
+ * Заставка «раскрытие» по модели iPhone Duo
+ * (разбор: empirical.health/blog/why-iphone-duo-fold-animation-works).
  *
- * Как пользоваться: {@link #prepare()} — снять кадр и закрыть экран чёрным
- * (делаем при выключении ТВ), {@link #play()} — проиграть (при включении).
+ * Главное: картинка НЕ поворачивается вместе со створкой. Она стоит на месте,
+ * как будто лежит за экраном, а створка — это стекло, через которое на неё смотрят.
+ * Левая половина неподвижна («внешний экран»). Правая створка откидывается
+ * от шарнира по центру на зрителя: свободный край растёт по высоте (перспектива).
+ * Размытие зависит от зазора между стеклом и картинкой: у шарнира резко,
+ * к свободному краю сильно (кубическая кривая). Притемнение тоже к краю.
  */
 public class Unfold extends View {
 
-    private static final long OPEN_MS = 1100;   // раскрытие
-    private static final long FADE_MS = 280;    // переход на живой экран
-    private static final float START_DEG = 82f; // насколько «сложен» экран в начале
-    private static final int SNAP_DIV = 2;      // кадр в половину разрешения
-    private static final int BLUR_DIV = 16;     // размытый кадр — в 1/16
+    /** Откуда взять текущий кадр фонового видео (SurfaceView в снимок не попадает). */
+    public interface FrameSource { Bitmap frame(int w, int h); }
+
+    private static final long OPEN_MS = 950;
+    private static final long FADE_MS = 200;
+    private static final int SNAP_DIV = 2;    // резкий кадр — половина разрешения
+    private static final int MID_DIV = 8;     // среднее размытие
+    private static final int HEAVY_DIV = 24;  // сильное размытие (свободный край)
 
     private final ViewGroup root;
-    private final View[] hideWhileSnapping;
+    private final View sky;
+    private final FrameSource video;
 
-    private Bitmap sharp, blurred;
-    private final Paint sharpPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-    private final Paint blurPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+    private Bitmap sharp, mid, heavy;
+    private final Paint sharpPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint midPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint heavyPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private Shader midBase, heavyBase;
     private final Paint dimPaint = new Paint();
-    private final Matrix half = new Matrix();
-    private final float[] src = new float[8], dst = new float[8];
+    private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path panel = new Path();
 
-    private float p;            // 0 — сложен, 1 — раскрыт
+    private float p;          // 0 — сложен, 1 — раскрыт
     private boolean ready;
     private ValueAnimator anim;
 
-    public Unfold(Context c, ViewGroup root, View... hideWhileSnapping) {
+    public Unfold(Context c, ViewGroup root, View sky, FrameSource video) {
         super(c);
         this.root = root;
-        this.hideWhileSnapping = hideWhileSnapping;
+        this.sky = sky;
+        this.video = video;
         setVisibility(GONE);
         setFocusable(false);
-        dimPaint.setColor(Color.BLACK);
+        edgePaint.setStyle(Paint.Style.STROKE);
+        edgePaint.setColor(Color.WHITE);
     }
 
-    /** Закрыть экран чёрным, пока кадр не готов (например, сразу при запуске). */
+    /** Закрыть экран чёрным, пока кадр не готов (сразу при запуске). */
     public void cover() {
         cancel();
         p = 0f;
@@ -73,39 +87,34 @@ public class Unfold extends View {
         recycle();
         try {
             setVisibility(GONE);
-            float[] old = new float[hideWhileSnapping.length];
-            for (int i = 0; i < old.length; i++) {
-                old[i] = hideWhileSnapping[i].getAlpha();
-                hideWhileSnapping[i].setAlpha(1f); // небо вместо видео: SurfaceView в кадр не попадает
-            }
-            sharp = Bitmap.createBitmap(w / SNAP_DIV, h / SNAP_DIV, Bitmap.Config.ARGB_8888);
+            int sw = w / SNAP_DIV, sh = h / SNAP_DIV;
+            Bitmap frame = video == null ? null : video.frame(sw, sh);
+
+            sharp = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(sharp);
+            c.save();
             c.scale(1f / SNAP_DIV, 1f / SNAP_DIV);
+            float skyAlpha = sky.getAlpha();
+            if (frame == null) sky.setAlpha(1f); // видео нет — в кадре небо
             root.draw(c);
-            for (int i = 0; i < old.length; i++) hideWhileSnapping[i].setAlpha(old[i]);
+            sky.setAlpha(skyAlpha);
+            c.restore();
+            if (frame != null) {
+                // интерфейс уже нарисован; кадр видео подкладываем ПОД него
+                Paint under = new Paint(Paint.FILTER_BITMAP_FLAG);
+                under.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OVER));
+                c.drawBitmap(frame, null, new Rect(0, 0, sw, sh), under);
+                frame.recycle();
+            }
 
-            blurred = Bitmap.createScaledBitmap(sharp, Math.max(1, w / BLUR_DIV),
-                    Math.max(1, h / BLUR_DIV), true);
-            boxBlur(blurred, 2, 3);
+            mid = Bitmap.createScaledBitmap(sharp, Math.max(1, w / MID_DIV), Math.max(1, h / MID_DIV), true);
+            boxBlur(mid, 2, 2);
+            heavy = Bitmap.createScaledBitmap(sharp, Math.max(1, w / HEAVY_DIV), Math.max(1, h / HEAVY_DIV), true);
+            boxBlur(heavy, 2, 3);
 
-            Shader s = new BitmapShader(sharp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-            Matrix sm = new Matrix();
-            sm.setScale(SNAP_DIV, SNAP_DIV);
-            s.setLocalMatrix(sm);
-            sharpPaint.setShader(s);
-
-            Shader b = new BitmapShader(blurred, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-            Matrix bm = new Matrix();
-            bm.setScale(w / (float) blurred.getWidth(), h / (float) blurred.getHeight());
-            b.setLocalMatrix(bm);
-            // у шарнира почти резко, к свободному краю — сильнее (кубическая кривая)
-            float cx = w / 2f;
-            int[] a = new int[]{0x26, 0x30, 0x55, 0x9B, 0xFF};
-            int[] cols = new int[a.length];
-            for (int i = 0; i < a.length; i++) cols[i] = a[i] << 24;
-            Shader mask = new LinearGradient(cx, 0, 0, 0, cols,
-                    new float[]{0f, .25f, .5f, .75f, 1f}, Shader.TileMode.MIRROR);
-            blurPaint.setShader(new ComposeShader(b, mask, PorterDuff.Mode.DST_IN));
+            sharpPaint.setShader(shader(sharp, w, h));
+            midBase = shader(mid, w, h);
+            heavyBase = shader(heavy, w, h);
 
             p = 0f;
             ready = true;
@@ -118,6 +127,14 @@ public class Unfold extends View {
         }
     }
 
+    private static Shader shader(Bitmap b, int w, int h) {
+        Shader s = new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        Matrix m = new Matrix();
+        m.setScale(w / (float) b.getWidth(), h / (float) b.getHeight());
+        s.setLocalMatrix(m);
+        return s;
+    }
+
     /** Проиграть раскрытие. Если кадра нет — снимет сам. */
     public void play() {
         if (!ready) prepare();
@@ -125,13 +142,15 @@ public class Unfold extends View {
         cancel();
         anim = ValueAnimator.ofFloat(0f, 1f);
         anim.setDuration(OPEN_MS);
-        anim.setInterpolator(new PathInterpolator(0.22f, 1f, 0.36f, 1f)); // быстро, с мягкой посадкой
+        // плавный разгон и мягкая посадка, как у петли
+        anim.setInterpolator(new PathInterpolator(0.32f, 0f, 0.15f, 1f));
         anim.addUpdateListener(v -> { p = (float) v.getAnimatedValue(); invalidate(); });
         anim.addListener(new android.animation.AnimatorListenerAdapter() {
             boolean cancelled;
             @Override public void onAnimationCancel(android.animation.Animator x) { cancelled = true; }
             @Override public void onAnimationEnd(android.animation.Animator x) {
                 if (cancelled) return;
+                // в конце кадр совпадает с живым экраном — растворяем коротко
                 animate().alpha(0f).setDuration(FADE_MS).withEndAction(() -> {
                     setVisibility(GONE);
                     recycle();
@@ -158,9 +177,12 @@ public class Unfold extends View {
     private void recycle() {
         ready = false;
         sharpPaint.setShader(null);
-        blurPaint.setShader(null);
+        midPaint.setShader(null);
+        heavyPaint.setShader(null);
+        midBase = heavyBase = null;
         if (sharp != null) { sharp.recycle(); sharp = null; }
-        if (blurred != null) { blurred.recycle(); blurred = null; }
+        if (mid != null) { mid.recycle(); mid = null; }
+        if (heavy != null) { heavy.recycle(); heavy = null; }
     }
 
     @Override
@@ -169,49 +191,70 @@ public class Unfold extends View {
         c.drawColor(Color.BLACK);
         if (!ready) return;
 
-        float q = 1f - p;
-        float deg = START_DEG * q;
-        float blur = (float) Math.pow(q, 0.8);   // размытие уходит чуть позже, чем угол
-        int dim = (int) (0xD0 * Math.pow(q, 1.4));
-
-        drawHalf(c, w, h, true, deg, blur, dim);
-        drawHalf(c, w, h, false, deg, blur, dim);
-    }
-
-    /** Одна половина, повёрнутая вокруг вертикальной линии по центру экрана. */
-    private void drawHalf(Canvas c, int w, int h, boolean left, float deg,
-                          float blur, int dim) {
         float cx = w / 2f, cy = h / 2f;
-        float d = cx;                         // ширина половины
-        double r = Math.toRadians(deg);
-        float f = w * 1.1f;                   // «фокусное расстояние» камеры
-        float z = (float) (d * Math.sin(r));  // насколько свободный край ушёл вглубь
-        float k = f / (f + z);                // перспективное уменьшение края
-        float ex = (float) (d * Math.cos(r)) * k;
-        float edgeX = left ? cx - ex : cx + ex;
-        float fromX = left ? 0 : w;
 
-        // исходный прямоугольник половины → трапеция
-        src[0] = fromX; src[1] = 0;     src[2] = cx; src[3] = 0;
-        src[4] = cx;    src[5] = h;     src[6] = fromX; src[7] = h;
-        dst[0] = edgeX; dst[1] = cy - cy * k;  dst[2] = cx; dst[3] = 0;
-        dst[4] = cx;    dst[5] = h;            dst[6] = edgeX; dst[7] = cy + cy * k;
-        half.setPolyToPoly(src, 0, dst, 0, 4);
+        // неподвижная левая половина — резкая, полной яркости
+        c.drawRect(0, 0, cx, h, sharpPaint);
+
+        // правая створка: угол от 90° (стоит ребром к зрителю) до 0° (легла в экран)
+        double th = Math.toRadians(90.0 * (1f - p));
+        float d = cx;
+        float f = w * 1.5f;                       // «фокусное расстояние» камеры
+        float zIn = (float) (d * Math.sin(th));   // насколько край вышел на зрителя
+        float s = f / (f - zIn);                  // ближе к камере — крупнее
+        float freeX = cx + (float) (d * Math.cos(th)) * s;
+        if (freeX - cx < 2f) return;              // ещё ребром — створки не видно
+        float top = cy - cy * s, bot = cy + cy * s;
+
+        panel.rewind();
+        panel.moveTo(cx, 0);
+        panel.lineTo(freeX, top);
+        panel.lineTo(freeX, bot);
+        panel.lineTo(cx, h);
+        panel.close();
 
         int save = c.save();
-        c.concat(half);
-        float l = left ? 0 : cx, rgt = left ? cx : w;
-        c.clipRect(l, 0, rgt, h);
-        c.drawRect(l, 0, rgt, h, sharpPaint);
-        if (blur > 0.01f) {
-            blurPaint.setAlpha((int) (255 * Math.min(1f, blur)));
-            c.drawRect(l, 0, rgt, h, blurPaint);
-        }
-        if (dim > 0) {
-            dimPaint.setAlpha(dim);
-            c.drawRect(l, 0, rgt, h, dimPaint);
+        c.clipPath(panel);
+        // картинка в своих экранных координатах — не искажается, «стоит на месте»
+        c.drawRect(cx, 0, w, h, sharpPaint);
+
+        // зазор между стеклом и картинкой: чем больше угол, тем сильнее размытие
+        float gap = (float) Math.sqrt(Math.sin(th));
+        if (gap > 0.01f) {
+            // среднее размытие нарастает быстро, сильное — по кубу к свободному краю
+            midPaint.setShader(masked(midBase, cx, freeX, gap,
+                    new float[]{0f, .35f, .8f, 1f, 1f}));
+            c.drawRect(cx, 0, w, h, midPaint);
+            heavyPaint.setShader(masked(heavyBase, cx, freeX, gap,
+                    new float[]{0f, .016f, .125f, .42f, 1f}));
+            c.drawRect(cx, 0, w, h, heavyPaint);
+
+            // притемнение к свободному краю (яркость — после размытия)
+            int a0 = (int) (0x18 * gap), a1 = (int) (0xA0 * gap);
+            dimPaint.setShader(new LinearGradient(cx, 0, freeX, 0,
+                    a0 << 24, a1 << 24, Shader.TileMode.CLAMP));
+            c.drawRect(cx, 0, w, h, dimPaint);
         }
         c.restoreToCount(save);
+
+        // тонкая резкая грань стекла: размыт контент, а не край
+        if (gap > 0.01f) {
+            edgePaint.setStrokeWidth(Math.max(1.5f, w / 900f));
+            edgePaint.setAlpha((int) (0x55 * gap));
+            c.drawLine(freeX, Math.max(0, top), freeX, Math.min(h, bot), edgePaint);
+        }
+    }
+
+    /** Размытая картинка с прозрачностью от шарнира (x0) к свободному краю (x1). */
+    private static Shader masked(Shader base, float x0, float x1, float k, float[] curve) {
+        int[] cols = new int[curve.length];
+        float[] pos = new float[curve.length];
+        for (int i = 0; i < curve.length; i++) {
+            cols[i] = ((int) (255 * Math.min(1f, curve[i] * k))) << 24;
+            pos[i] = i / (float) (curve.length - 1);
+        }
+        Shader mask = new LinearGradient(x0, 0, x1, 0, cols, pos, Shader.TileMode.CLAMP);
+        return new ComposeShader(base, mask, PorterDuff.Mode.DST_IN);
     }
 
     // ---------- быстрое размытие маленькой картинки (несколько проходов box blur) ----------
