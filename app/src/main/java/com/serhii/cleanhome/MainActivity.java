@@ -61,7 +61,9 @@ public class MainActivity extends Activity {
     // заставка «раскрытие» (как у iPhone Duo) при включении ТВ
     private Unfold unfold;
     private boolean resumed;
-    private long videoPosUs = -1;   // где было видео, когда уходили с главного
+    // первый кадр видео-камина: видео на главном всегда стартует с начала,
+    // поэтому заставка берёт именно его (достаём один раз и кэшируем)
+    private android.graphics.Bitmap firstFrame;
     private final android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
         @Override public void onReceive(android.content.Context c, Intent i) {
             if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
@@ -163,13 +165,14 @@ public class MainActivity extends Activity {
         root.addView(buildSeaWidget(), seaWidgetParams());
 
         unfold = new Unfold(this, root, skyView, new Unfold.FrameSource() {
-            @Override public long position() {
-                if (player != null && playerReady) {
-                    try { return player.getCurrentPosition() * 1000L; } catch (Exception e) { return -1; }
-                }
-                return videoPosUs;
+            @Override public long position() { return bgFile().exists() ? 0 : -1; }
+            @Override public android.graphics.Bitmap frame(long us, int w, int h) { return firstFrame(w, h); }
+        });
+        // видео стоит на первом кадре, пока идёт заставка, и стартует в её финале
+        unfold.setOnDone(() -> {
+            if (player != null && playerReady) {
+                try { player.seekTo(0); player.start(); } catch (Exception ignored) { }
             }
-            @Override public android.graphics.Bitmap frame(long us, int w, int h) { return videoFrame(us, w, h); }
         });
         root.addView(unfold, new FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH));
         setContentView(root);
@@ -213,7 +216,10 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(skyTick);
         handler.post(weatherTick);
         handler.post(skyTick);
-        if (player != null && playerReady) player.start();
+        if (player != null && playerReady) {
+            if (unfold.isActive()) try { player.seekTo(0); } catch (Exception ignored) { } // ждёт финала заставки
+            else player.start();
+        }
         // вернулись на главный (из приложения или после включения ТВ) — раскрываемся.
         // Кадр снят в onStop, поэтому экран уже закрыт заставкой и ничего не мигает.
         // При холодном старте экран ещё не размечен — там запускает onCreate.
@@ -232,8 +238,6 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         resumed = false;
-        try { videoPosUs = (player != null && playerReady) ? player.getCurrentPosition() * 1000L : -1; }
-        catch (Exception e) { videoPosUs = -1; }
         handler.removeCallbacks(weatherTick);
         handler.removeCallbacks(skyTick);
         if (player != null && playerReady) player.pause();
@@ -261,9 +265,8 @@ public class MainActivity extends Activity {
             player.setVolume(0f, 0f);
             player.setOnPreparedListener(mp -> {
                 playerReady = true;
-                // продолжаем видео с того же места — совпадёт с кадром в заставке
-                if (videoPosUs > 0) try { mp.seekTo((int) (videoPosUs / 1000)); } catch (Exception ignored) { }
-                if (hasWindowFocus()) mp.start();
+
+                if (hasWindowFocus() && !unfold.isActive()) mp.start(); // иначе стартует в финале заставки
                 skyView.animate().alpha(0f).setDuration(1200).start();
             });
             player.setOnErrorListener((mp, what, extra) -> {
@@ -276,22 +279,28 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Текущий кадр фонового видео — для заставки «раскрытие». */
-    private android.graphics.Bitmap videoFrame(long us, int w, int h) {
+    private java.io.File bgFile() {
         java.io.File dir = getExternalFilesDir(null);
-        if (dir == null) return null;
-        android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
-        try {
-            r.setDataSource(new java.io.File(dir, BG_FILE).getAbsolutePath());
-            int opt = android.media.MediaMetadataRetriever.OPTION_CLOSEST;
-            return android.os.Build.VERSION.SDK_INT >= 27
-                    ? r.getScaledFrameAtTime(us, opt, w, h)
-                    : r.getFrameAtTime(us, opt);
-        } catch (Throwable t) {
-            return null;
-        } finally {
-            try { r.release(); } catch (Exception ignored) { }
+        return new java.io.File(dir == null ? new java.io.File("/") : dir, BG_FILE);
+    }
+
+    /** Копия первого кадра видео (Unfold её потом освобождает). Вызывается в фоне. */
+    private synchronized android.graphics.Bitmap firstFrame(int w, int h) {
+        if (firstFrame == null) {
+            android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+            try {
+                r.setDataSource(bgFile().getAbsolutePath());
+                int opt = android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC;
+                firstFrame = android.os.Build.VERSION.SDK_INT >= 27
+                        ? r.getScaledFrameAtTime(0, opt, w, h)
+                        : r.getFrameAtTime(0, opt);
+            } catch (Throwable t) {
+                return null;
+            } finally {
+                try { r.release(); } catch (Exception ignored) { }
+            }
         }
+        return firstFrame == null ? null : firstFrame.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
     }
 
     private void releaseVideo() {

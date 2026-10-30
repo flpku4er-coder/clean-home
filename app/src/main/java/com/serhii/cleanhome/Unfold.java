@@ -40,7 +40,7 @@ public class Unfold extends View {
     }
 
     // ---- параметры из Unfold Lab (пиксели — в пересчёте на ширину 1920) ----
-    private static final long OPEN_MS = 950;
+    private static final long OPEN_MS = 2000;
     private static final float EASE_X1 = .32f, EASE_Y1 = 0f, EASE_X2 = .15f, EASE_Y2 = 1f;
     private static final float START_DEG = 90f;
     private static final float FOCAL = 1.5f;
@@ -78,6 +78,10 @@ public class Unfold extends View {
     private boolean ready, preparing, playWhenReady;
     private int gen;   // номер подготовки: устаревшие фоновые результаты выбрасываем
     private ValueAnimator anim;
+    private Runnable onDone;
+
+    /** Вызывается, когда створка раскрылась (перед коротким растворением). */
+    public void setOnDone(Runnable r) { onDone = r; }
 
     public Unfold(Context c, ViewGroup root, View sky, FrameSource video) {
         super(c);
@@ -219,6 +223,7 @@ public class Unfold extends View {
             @Override public void onAnimationCancel(android.animation.Animator x) { cancelled = true; }
             @Override public void onAnimationEnd(android.animation.Animator x) {
                 if (cancelled) return;
+                if (onDone != null) onDone.run();
                 // в конце кадр совпадает с живым экраном — растворяем коротко
                 animate().alpha(0f).setDuration(FADE_MS).withEndAction(() -> {
                     setVisibility(GONE);
