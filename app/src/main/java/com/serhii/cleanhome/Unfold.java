@@ -52,7 +52,7 @@ public class Unfold extends View {
     private static final float BEZEL = 1, RADIUS = 70, DEPTH = 38;
     private static final float START_SCALE = .56f, ZOOM_START = .5f;
 
-    private static final int SNAP_DIV = 2;     // резкий кадр — половина разрешения
+    private static final int SNAP_DIV = 1;     // резкий кадр — полное разрешение, как в Lab
     private static final float[] MID_CURVE = {0f, .35f, .8f, 1f, 1f};
     private static final float[] HEAVY_CURVE = {0f, .016f, .125f, .42f, 1f};  // куб к краю
     private static final float[] STOPS = {0f, .25f, .5f, .75f, 1f};
@@ -62,11 +62,14 @@ public class Unfold extends View {
     private final FrameSource video;
 
     private Bitmap sharp, mid, heavy;
-    private final Paint sharpPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final Paint midPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final Paint heavyPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    // экраны рисуем контуром со сглаживанием, а не через clipPath:
+    // на ТВ (аппаратная отрисовка) clipPath без сглаживания — края створки шли «лесенкой»
+    private static final int AA = Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG;
+    private final Paint sharpPaint = new Paint(AA);
+    private final Paint midPaint = new Paint(AA);
+    private final Paint heavyPaint = new Paint(AA);
     private Shader midBase, heavyBase;
-    private final Paint dimPaint = new Paint();
+    private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bodyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rimLine = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -184,12 +187,23 @@ public class Unfold extends View {
         }
     }
 
-    /** Размытие как в Lab: копия шириной 5760/px (≈3 px исходника на пиксель) + 3 прохода box blur. */
+    /**
+     * Размытие как в Lab: копия шириной 5760/px (≈3 px исходника на пиксель) + 3 прохода box blur.
+     * Уменьшаем вдвое за шаг: один большой шаг на Android берёт отдельные пиксели
+     * вместо среднего, и размытие выходит пятнистым (в браузере усредняется).
+     */
     private static Bitmap blurred(Bitmap src, int w, int h, float px1920) {
         int bw = Math.max(1, Math.round(5760f / Math.max(1f, px1920)));
         bw = Math.min(bw, src.getWidth());
         int bh = Math.max(1, Math.round(bw * h / (float) w));
-        Bitmap b = Bitmap.createScaledBitmap(src, bw, bh, true);
+        Bitmap cur = src;
+        while (cur.getWidth() / 2 >= bw && cur.getHeight() / 2 >= 1) {
+            Bitmap next = Bitmap.createScaledBitmap(cur, cur.getWidth() / 2, Math.max(1, cur.getHeight() / 2), true);
+            if (cur != src) cur.recycle();
+            cur = next;
+        }
+        Bitmap b = Bitmap.createScaledBitmap(cur, bw, bh, true);
+        if (cur != src && cur != b) cur.recycle();
         boxBlur(b, 1, 3);
         return b;
     }
@@ -309,34 +323,27 @@ public class Unfold extends View {
         }
 
         // левый экран — неподвижный
-        int s2 = c.save();
         float lr = B > 0 ? R : 0;
         rpoly(path, new float[]{0, 0, cx, 0, cx, h, 0, h}, new float[]{lr, 0, 0, lr});
-        c.clipPath(path);
-        c.drawRect(0, 0, cx, h, sharpPaint);
-        c.restoreToCount(s2);
+        c.drawPath(path, sharpPaint);
 
         float gap = (float) Math.pow(Math.max(0, Math.sin(th)), GAP_POW);
         if (open) {
             // правая створка: картинка в своих координатах — стоит на месте
-            s2 = c.save();
             float pr = B > 0 ? R * s : 0;
             rpoly(path, new float[]{cx, 0, freeX, top, freeX, bot, cx, h}, new float[]{0, pr, pr, 0});
-            c.clipPath(path);
-            float l = Math.min(cx, freeX), r = Math.max(cx, freeX);
-            c.drawRect(l, Math.min(0, top), r, Math.max(h, bot), sharpPaint);
+            c.drawPath(path, sharpPaint);
             if (gap > .01f) {
                 midPaint.setShader(masked(midBase, cx, freeX, gap * MID_STRENGTH, MID_CURVE));
-                c.drawRect(l, Math.min(0, top), r, Math.max(h, bot), midPaint);
+                c.drawPath(path, midPaint);
                 heavyPaint.setShader(masked(heavyBase, cx, freeX, gap * HEAVY_STRENGTH, HEAVY_CURVE));
-                c.drawRect(l, Math.min(0, top), r, Math.max(h, bot), heavyPaint);
+                c.drawPath(path, heavyPaint);
                 // притемнение к свободному краю (яркость — после размытия)
                 int a0 = (int) (255 * DIM_HINGE * gap), a1 = (int) (255 * DIM_EDGE * gap);
                 dimPaint.setShader(new LinearGradient(cx, 0, freeX, 0,
                         a0 << 24, a1 << 24, Shader.TileMode.CLAMP));
-                c.drawRect(l, Math.min(0, top), r, Math.max(h, bot), dimPaint);
+                c.drawPath(path, dimPaint);
             }
-            c.restoreToCount(s2);
 
             // тонкая резкая грань стекла
             if (gap > .01f && EDGE_LINE > 0) {
