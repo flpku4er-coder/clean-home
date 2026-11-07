@@ -60,8 +60,42 @@ public class KeyService extends AccessibilityService {
      * лаунчер Google) — сразу возвращаем «Чистый экран». Окно выбора HDMI
      * (InputSourcePopupActivity) из того же пакета не трогаем.
      */
+    // кнопки отказа в окнах согласия/рекламы (EN/ES/UK/RU)
+    private static final String[] REJECT = {
+            "Reject all", "Reject All", "Rechazar todo", "Rechazar todas",
+            "Відхилити все", "Відхилити всі", "Отклонить все"};
+    // пакеты, чьи окна согласия можно закрывать автоматически
+    private static final String[] NAG_PKGS = {"com.mitv", "com.xiaomi", "com.miui"};
+    private long lastReject;
+
+    /** Ищет в окне кнопку «Reject all» и нажимает её. */
+    private void autoReject(String pkg) {
+        boolean nag = false;
+        for (String p : NAG_PKGS) if (pkg.startsWith(p)) nag = true;
+        if (!nag) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastReject < 1500) return;
+        android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        for (String label : REJECT) {
+            java.util.List<android.view.accessibility.AccessibilityNodeInfo> found =
+                    root.findAccessibilityNodeInfosByText(label);
+            for (android.view.accessibility.AccessibilityNodeInfo n : found) {
+                android.view.accessibility.AccessibilityNodeInfo c = n;
+                while (c != null && !c.isClickable()) c = c.getParent();
+                if (c != null && c.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
+                    lastReject = now;
+                    android.util.Log.i("CleanHomeKeys", "auto-reject in " + pkg);
+                    return;
+                }
+            }
+        }
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        CharSequence ep = event.getPackageName();
+        if (ep != null) autoReject(ep.toString());
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName(), cls = event.getClassName();
         if (pkg == null || cls == null) return;
